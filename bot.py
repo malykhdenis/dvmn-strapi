@@ -7,13 +7,14 @@ import logging
 import os
 import redis
 
-from telegram.ext import Filters, Updater
-from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (Filters, Updater, CallbackQueryHandler,
+                          CommandHandler, MessageHandler, CallbackContext)
 
 _database = None
 
 
-def start(update, context):
+def start(update: Update, context: CallbackContext) -> str:
     """
     Хэндлер для состояния START.
     Бот отвечает пользователю фразой "Привет!" и переводит его в состояние
@@ -21,21 +22,36 @@ def start(update, context):
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
     update.message.reply_text(text='Привет!')
+    keyboard = [
+        [
+            InlineKeyboardButton("Option 1", callback_data='1'),
+            InlineKeyboardButton("Option 2", callback_data='2'),
+        ],
+        [InlineKeyboardButton("Option 3", callback_data='3')],
+    ]
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    update.message.reply_text('Please choose:', reply_markup=reply_markup)
     return "ECHO"
 
 
-def echo(update, context):
+def echo(update: Update, context: CallbackContext) -> str:
     """
     Хэндлер для состояния ECHO.
     Бот отвечает пользователю тем же, что пользователь ему написал.
     Оставляет пользователя в состоянии ECHO.
     """
-    users_reply = update.message.text
-    update.message.reply_text(users_reply)
+    if update.callback_query.data:
+        query = update.callback_query
+        query.answer()
+        query.edit_message_text(text=f"Selected option: {query.data}")
+    else:
+        users_reply = update.message.text
+        update.message.reply_text(users_reply)
     return "ECHO"
 
 
-def handle_users_reply(update, context):
+def handle_users_reply(update: Update, context: CallbackContext) -> None:
     """
     Функция, которая запускается при любом сообщении от пользователя и решает
     как его обработать.
@@ -98,6 +114,10 @@ def get_database_connection():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO,
+    )
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     updater = Updater(token)
     dispatcher = updater.dispatcher
@@ -105,5 +125,4 @@ if __name__ == '__main__':
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))
     updater.start_polling()
-    logging.info('bot started')
     updater.idle()
