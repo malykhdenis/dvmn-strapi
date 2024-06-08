@@ -6,6 +6,7 @@ redis==3.2.1
 import logging
 import os
 import redis
+import requests
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (Filters, Updater, CallbackQueryHandler,
@@ -22,17 +23,26 @@ def start(update: Update, context: CallbackContext) -> str:
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
     update.message.reply_text(text='Привет!')
+
+    strapi_url = 'http://localhost:1337/api'
+    headers = {
+        'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
+    }
+    products = requests.get(
+        os.path.join(strapi_url, 'products'),
+        headers=headers,
+    ).json()
+
     keyboard = [
-        [
-            InlineKeyboardButton("Option 1", callback_data='1'),
-            InlineKeyboardButton("Option 2", callback_data='2'),
-        ],
-        [InlineKeyboardButton("Option 3", callback_data='3')],
+        [InlineKeyboardButton(
+            product['attributes']['title'],
+            callback_data=product['id'],
+        )] for product in products['data']
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     update.message.reply_text('Please choose:', reply_markup=reply_markup)
-    return "ECHO"
+    return "HANDLE_MENU"
 
 
 def echo(update: Update, context: CallbackContext) -> str:
@@ -49,6 +59,28 @@ def echo(update: Update, context: CallbackContext) -> str:
         users_reply = update.message.text
         update.message.reply_text(users_reply)
     return "ECHO"
+
+
+def get_description(update: Update, context: CallbackContext) -> str:
+    """
+    Хэндлер для состояния HANDLE_MENU.
+    Бот присылает пользователю описание выбранного товара.
+    Оставляет пользователя в состоянии START.
+    """
+    product_id = update.callback_query.data
+    strapi_url = 'http://localhost:1337/api'
+    headers = {
+        'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}',
+    }
+    description = requests.get(
+        os.path.join(strapi_url, 'products', product_id),
+        headers=headers,
+    ).json()['data']['attributes']['description']
+    context.bot.send_message(
+        update.callback_query.from_user.id,
+        description,
+    )
+    return "START"
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
@@ -85,7 +117,8 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
 
     states_functions = {
         'START': start,
-        'ECHO': echo
+        'ECHO': echo,
+        'HANDLE_MENU': get_description,
     }
     state_handler = states_functions[user_state]
     try:
