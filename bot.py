@@ -5,9 +5,10 @@ redis==3.2.1
 """
 import logging
 import os
+
 import redis
 import requests
-
+from io import BytesIO
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (Filters, Updater, CallbackQueryHandler,
                           CommandHandler, MessageHandler, CallbackContext)
@@ -68,17 +69,27 @@ def get_description(update: Update, context: CallbackContext) -> str:
     Оставляет пользователя в состоянии START.
     """
     product_id = update.callback_query.data
-    strapi_url = 'http://localhost:1337/api'
+    strapi_url = 'http://localhost:1337'
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}',
     }
-    description = requests.get(
-        os.path.join(strapi_url, 'products', product_id),
+    payload = {'populate': 'picture'}
+    product_attributes = requests.get(
+        os.path.join(strapi_url, 'api', 'products', product_id),
         headers=headers,
-    ).json()['data']['attributes']['description']
-    context.bot.send_message(
+        params=payload,
+    ).json()['data']['attributes']
+    description = product_attributes['description']
+
+    picture_attributes = product_attributes['picture']['data']['attributes']
+    picture_url = os.path.join(strapi_url, picture_attributes['url'][1:])
+    dowloaded_picture = BytesIO(requests.get(picture_url).content)
+
+    update.callback_query.delete_message()
+    context.bot.send_photo(
         update.callback_query.from_user.id,
-        description,
+        dowloaded_picture,
+        caption=description,
     )
     return "START"
 
