@@ -9,11 +9,14 @@ import os
 import redis
 import requests
 from io import BytesIO
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
+                      KeyboardButton, ReplyKeyboardMarkup, Update)
 from telegram.ext import (Filters, Updater, CallbackQueryHandler,
                           CommandHandler, MessageHandler, CallbackContext)
 
 _database = None
+
+STRAPI_API_URL = os.getenv('STRAPI_API_URL')
 
 
 def start(update: Update, context: CallbackContext) -> str:
@@ -23,13 +26,16 @@ def start(update: Update, context: CallbackContext) -> str:
     ECHO.
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
-    update.message.reply_text(text='Привет!')
-    strapi_url = 'http://localhost:1337/api'
+    context.bot_data['user_id'] = update.message.from_user.id
+    update.message.reply_text(
+        text='Привет!',
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton('Моя корзина')]]),
+    )
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
     }
     products = requests.get(
-        os.path.join(strapi_url, 'products'),
+        os.path.join(STRAPI_API_URL, 'products'),
         headers=headers,
     ).json()
     keyboard = [
@@ -49,12 +55,11 @@ def get_menu(update: Update, context: CallbackContext) -> str:
     Бот выдает все товары в виде инлайн кнопок.
     Оставляет пользователя в состоянии HANDLE_MENU.
     """
-    strapi_url = 'http://localhost:1337/api'
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
     }
     products = requests.get(
-        os.path.join(strapi_url, 'products'),
+        os.path.join(STRAPI_API_URL, 'products'),
         headers=headers,
     ).json()
     keyboard = [
@@ -78,20 +83,22 @@ def get_description(update: Update, context: CallbackContext) -> str:
     Оставляет пользователя в состоянии HANDLE_DESCRIPTION.
     """
     product_id = update.callback_query.data
-    strapi_url = 'http://localhost:1337'
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}',
     }
     payload = {'populate': 'picture'}
     product_attributes = requests.get(
-        os.path.join(strapi_url, 'api', 'products', product_id),
+        os.path.join(STRAPI_API_URL, 'products', product_id),
         headers=headers,
         params=payload,
     ).json()['data']['attributes']
     description = product_attributes['description']
 
     picture_attributes = product_attributes['picture']['data']['attributes']
-    picture_url = os.path.join(strapi_url, picture_attributes['url'][1:])
+    picture_url = os.path.join(
+        STRAPI_API_URL[:-4],
+        picture_attributes['url'][1:],
+    )
     dowloaded_picture = BytesIO(requests.get(picture_url).content)
 
     update.callback_query.delete_message()
@@ -106,8 +113,12 @@ def get_description(update: Update, context: CallbackContext) -> str:
                     callback_data=product_id,
                 )],
                 [InlineKeyboardButton(
+                    'Моя корзина',
+                    callback_data='show_cart',
+                )],
+                [InlineKeyboardButton(
                     'Назад',
-                    callback_data='back_to_menu'
+                    callback_data='back_to_menu',
                 )],
             ],
         )
@@ -117,14 +128,13 @@ def get_description(update: Update, context: CallbackContext) -> str:
 
 
 def add_to_cart(update: Update, context: CallbackContext) -> str:
-    strapi_url = 'http://localhost:1337/api'
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
     }
-    user_id = update.callback_query.from_user.id
+    user_id = context.bot_data['user_id']
     if update.callback_query.data == 'back_to_menu':
         products = requests.get(
-            os.path.join(strapi_url, 'products'),
+            os.path.join(STRAPI_API_URL, 'products'),
             headers=headers,
         ).json()
         keyboard = [
@@ -138,16 +148,18 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
             user_id,
             'Please choose:',
             reply_markup=reply_markup)
+    elif update.callback_query.data == 'show_cart':
+        show_cart(update, context)
     else:
         cart_filter = {'filters[tg_id][$eq]': {user_id}}
         user_cart = requests.get(
-            os.path.join(strapi_url, 'carts'),
+            os.path.join(STRAPI_API_URL, 'carts'),
             params=cart_filter,
         )
         if not user_cart:
             cart_payload = {'data': {'tg_id': user_id}, }
             requests.post(
-                os.path.join(strapi_url, 'carts'),
+                os.path.join(STRAPI_API_URL, 'carts'),
                 json=cart_payload,
             )
         productcart_payload = {
@@ -157,10 +169,30 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
             }
         }
         requests.post(
-            os.path.join(strapi_url, 'product-in-carts'),
+            os.path.join(STRAPI_API_URL, 'product-in-carts'),
             json=productcart_payload,
         )
     return "HANDLE_MENU"
+
+
+def show_cart(update: Update, context: CallbackContext) -> str:
+    cart_filter = {
+        'filters[tg_id][$eq]': context.bot_data['user_id'],
+        'populate[cartproducts][populate]': 'product',
+    }
+    user_cart = requests.get(
+        os.path.join(STRAPI_API_URL, 'carts'),
+        params=cart_filter,
+    ).json()
+    cartproducts = user_cart['data'][0]['attributes']['cartproducts']['data']
+    products = [
+        cartproduct['attributes']['product']['data']['attributes']['title']
+        for cartproduct in cartproducts
+    ]
+    context.bot.send_message(
+        context.bot_data['user_id'],
+        '\n'.join(products)
+    )
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
@@ -234,6 +266,9 @@ if __name__ == '__main__':
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     updater = Updater(token)
     dispatcher = updater.dispatcher
+    dispatcher.add_handler(
+        MessageHandler(Filters.regex(r'Моя корзина'), show_cart),
+    )
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
     dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))
