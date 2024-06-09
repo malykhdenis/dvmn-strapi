@@ -23,8 +23,6 @@ def start(update: Update, context: CallbackContext) -> str:
     ECHO.
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
-    update.message.reply_text(text='Привет!')
-
     strapi_url = 'http://localhost:1337/api'
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
@@ -42,7 +40,15 @@ def start(update: Update, context: CallbackContext) -> str:
     ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text('Please choose:', reply_markup=reply_markup)
+
+    if not update.callback_query:
+        update.message.reply_text(text='Привет!')
+        update.message.reply_text('Please choose:', reply_markup=reply_markup)
+    else:
+        context.bot.send_message(
+            update.callback_query.from_user.id,
+            'Please choose:',
+            reply_markup=reply_markup)
     return "HANDLE_MENU"
 
 
@@ -90,8 +96,12 @@ def get_description(update: Update, context: CallbackContext) -> str:
         update.callback_query.from_user.id,
         dowloaded_picture,
         caption=description,
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton('Назад',  callback_data='back_to_menu'),],],
+        )
     )
-    return "START"
+
+    return 'HANDLE_DESCRIPTION'
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
@@ -130,6 +140,7 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
         'START': start,
         'ECHO': echo,
         'HANDLE_MENU': get_description,
+        'HANDLE_DESCRIPTION': start,
     }
     state_handler = states_functions[user_state]
     try:
