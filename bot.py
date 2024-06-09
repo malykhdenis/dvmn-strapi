@@ -23,6 +23,7 @@ def start(update: Update, context: CallbackContext) -> str:
     ECHO.
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
+    update.message.reply_text(text='Привет!')
     strapi_url = 'http://localhost:1337/api'
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
@@ -31,48 +32,50 @@ def start(update: Update, context: CallbackContext) -> str:
         os.path.join(strapi_url, 'products'),
         headers=headers,
     ).json()
-
     keyboard = [
         [InlineKeyboardButton(
             product['attributes']['title'],
             callback_data=product['id'],
         )] for product in products['data']
     ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    if not update.callback_query:
-        update.message.reply_text(text='Привет!')
-        update.message.reply_text('Please choose:', reply_markup=reply_markup)
-    else:
-        context.bot.send_message(
-            update.callback_query.from_user.id,
-            'Please choose:',
-            reply_markup=reply_markup)
+    update.message.reply_text('Please choose:', reply_markup=reply_markup)
     return "HANDLE_MENU"
 
 
-def echo(update: Update, context: CallbackContext) -> str:
+def get_menu(update: Update, context: CallbackContext) -> str:
     """
-    Хэндлер для состояния ECHO.
-    Бот отвечает пользователю тем же, что пользователь ему написал.
-    Оставляет пользователя в состоянии ECHO.
+    Хэндлер для состояния HANDLE_DESCRIPTION.
+    Бот выдает все товары в виде инлайн кнопок.
+    Оставляет пользователя в состоянии HANDLE_MENU.
     """
-    if update.callback_query.data:
-        query = update.callback_query
-        query.answer()
-        query.edit_message_text(text=f"Selected option: {query.data}")
-    else:
-        users_reply = update.message.text
-        update.message.reply_text(users_reply)
-    return "ECHO"
+    strapi_url = 'http://localhost:1337/api'
+    headers = {
+        'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
+    }
+    products = requests.get(
+        os.path.join(strapi_url, 'products'),
+        headers=headers,
+    ).json()
+    keyboard = [
+        [InlineKeyboardButton(
+            product['attributes']['title'],
+            callback_data=product['id'],
+        )] for product in products['data']
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.send_message(
+        update.callback_query.from_user.id,
+        'Please choose:',
+        reply_markup=reply_markup)
+    return 'HANDLE_MENU'
 
 
 def get_description(update: Update, context: CallbackContext) -> str:
     """
     Хэндлер для состояния HANDLE_MENU.
     Бот присылает пользователю описание выбранного товара.
-    Оставляет пользователя в состоянии START.
+    Оставляет пользователя в состоянии HANDLE_DESCRIPTION.
     """
     product_id = update.callback_query.data
     strapi_url = 'http://localhost:1337'
@@ -97,11 +100,60 @@ def get_description(update: Update, context: CallbackContext) -> str:
         dowloaded_picture,
         caption=description,
         reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton('Назад',  callback_data='back_to_menu'),],],
+            [
+                [InlineKeyboardButton(
+                    'Добавить в корзину',
+                    callback_data=product_id,
+                )],
+                [InlineKeyboardButton(
+                    'Назад',
+                    callback_data='back_to_menu'
+                )],
+            ],
         )
     )
 
     return 'HANDLE_DESCRIPTION'
+
+
+def add_to_cart(update: Update, context: CallbackContext) -> str:
+    strapi_url = 'http://localhost:1337/api'
+    headers = {
+        'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
+    }
+    user_id = update.callback_query.from_user.id
+    if update.callback_query.data == 'back_to_menu':
+        products = requests.get(
+            os.path.join(strapi_url, 'products'),
+            headers=headers,
+        ).json()
+        keyboard = [
+            [InlineKeyboardButton(
+                product['attributes']['title'],
+                callback_data=product['id'],
+            )] for product in products['data']
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        context.bot.send_message(
+            user_id,
+            'Please choose:',
+            reply_markup=reply_markup)
+    else:
+        cart_filter = {
+            'filters': f'[tg_id][$eq]={user_id}'
+        }
+        if not requests.get(
+            os.path.join(strapi_url, 'carts'),
+            params=cart_filter,
+        ):
+            payload = {
+                'data': {'tg_id': user_id},
+            }
+            requests.post(
+                os.path.join(strapi_url, 'carts'),
+                json=payload,
+            )
+    return "HANDLE_MENU"
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
@@ -138,9 +190,8 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
 
     states_functions = {
         'START': start,
-        'ECHO': echo,
         'HANDLE_MENU': get_description,
-        'HANDLE_DESCRIPTION': start,
+        'HANDLE_DESCRIPTION': add_to_cart,
     }
     state_handler = states_functions[user_state]
     try:
