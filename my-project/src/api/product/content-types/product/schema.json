@@ -31,6 +31,12 @@
     },
     "price": {
       "type": "decimal"
+    },
+    "productcarts": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::product-in-cart.product-in-cart",
+      "mappedBy": "product"
     }
   }
 }
