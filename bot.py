@@ -139,20 +139,27 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
             'Please choose:',
             reply_markup=reply_markup)
     else:
-        cart_filter = {
-            'filters': f'[tg_id][$eq]={user_id}'
-        }
-        if not requests.get(
+        cart_filter = {'filters[tg_id][$eq]': {user_id}}
+        user_cart = requests.get(
             os.path.join(strapi_url, 'carts'),
             params=cart_filter,
-        ):
-            payload = {
-                'data': {'tg_id': user_id},
-            }
+        )
+        if not user_cart:
+            cart_payload = {'data': {'tg_id': user_id}, }
             requests.post(
                 os.path.join(strapi_url, 'carts'),
-                json=payload,
+                json=cart_payload,
             )
+        productcart_payload = {
+            'data': {
+                'cart': user_cart.json()['data'][0]['id'],
+                'product': update.callback_query.data,
+            }
+        }
+        requests.post(
+            os.path.join(strapi_url, 'product-in-carts'),
+            json=productcart_payload,
+        )
     return "HANDLE_MENU"
 
 
