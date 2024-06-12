@@ -26,7 +26,7 @@ def start(update: Update, context: CallbackContext) -> str:
     ECHO.
     Теперь в ответ на его команды будет запускаеться хэндлер echo.
     """
-    context.bot_data['user_id'] = update.message.from_user.id
+    context.bot_data['telegram_id'] = update.message.from_user.id
     update.message.reply_text(
         text='Привет!',
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton('Моя корзина')]]),
@@ -82,7 +82,20 @@ def get_description(update: Update, context: CallbackContext) -> str:
     Бот присылает пользователю описание выбранного товара.
     Оставляет пользователя в состоянии HANDLE_DESCRIPTION.
     """
+    if update.callback_query.data == 'back_to_menu':
+        get_menu(update, context)
+        return 'HANDLE_MENU'
+    elif update.callback_query.data == 'show_cart':
+        show_cart(update, context)
+        return 'HANDLE_CART'
+    elif update.callback_query.data == 'pay':
+        context.bot.send_message(
+            update.callback_query.from_user.id,
+            'Введите email',
+        )
+        return 'WAITING_EMAIL'
     product_id = update.callback_query.data
+    context.bot_data['product_id'] = product_id
     headers = {
         'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}',
     }
@@ -109,9 +122,9 @@ def get_description(update: Update, context: CallbackContext) -> str:
         reply_markup=InlineKeyboardMarkup(
             [
                 [InlineKeyboardButton(
-                    'Добавить в корзину',
-                    callback_data=product_id,
-                )],
+                    str(i),
+                    callback_data=i,
+                ) for i in range(5, 16, 5)],
                 [InlineKeyboardButton(
                     'Моя корзина',
                     callback_data='show_cart',
@@ -128,36 +141,21 @@ def get_description(update: Update, context: CallbackContext) -> str:
 
 
 def add_to_cart(update: Update, context: CallbackContext) -> str:
-    headers = {
-        'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}'
-    }
-    user_id = context.bot_data['user_id']
     if update.callback_query.data == 'back_to_menu':
-        products = requests.get(
-            os.path.join(STRAPI_API_URL, 'products'),
-            headers=headers,
-        ).json()
-        keyboard = [
-            [InlineKeyboardButton(
-                product['attributes']['title'],
-                callback_data=product['id'],
-            )] for product in products['data']
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        context.bot.send_message(
-            user_id,
-            'Please choose:',
-            reply_markup=reply_markup)
+        get_menu(update, context)
+        return 'HANDLE_MENU'
     elif update.callback_query.data == 'show_cart':
         show_cart(update, context)
+        return 'HANDLE_CART'
     else:
-        cart_filter = {'filters[tg_id][$eq]': {user_id}}
+        telegram_id = update.callback_query.from_user.id
+        cart_filter = {'filters[tg_id][$eq]': {telegram_id}}
         user_cart = requests.get(
             os.path.join(STRAPI_API_URL, 'carts'),
             params=cart_filter,
         )
         if not user_cart:
-            cart_payload = {'data': {'tg_id': user_id}, }
+            cart_payload = {'data': {'tg_id': telegram_id}, }
             requests.post(
                 os.path.join(STRAPI_API_URL, 'carts'),
                 json=cart_payload,
@@ -165,7 +163,8 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
         productcart_payload = {
             'data': {
                 'cart': user_cart.json()['data'][0]['id'],
-                'product': update.callback_query.data,
+                'product': context.bot_data['product_id'],
+                'amount': int(update.callback_query.data),
             }
         }
         requests.post(
@@ -176,23 +175,100 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
 
 
 def show_cart(update: Update, context: CallbackContext) -> str:
+    telegram_id = context.bot_data['telegram_id']
     cart_filter = {
-        'filters[tg_id][$eq]': context.bot_data['user_id'],
+        'filters[tg_id][$eq]': telegram_id,
         'populate[cartproducts][populate]': 'product',
     }
     user_cart = requests.get(
         os.path.join(STRAPI_API_URL, 'carts'),
         params=cart_filter,
     ).json()
+    context.bot_data['cart_id'] = user_cart['data'][0]['id']
     cartproducts = user_cart['data'][0]['attributes']['cartproducts']['data']
-    products = [
-        cartproduct['attributes']['product']['data']['attributes']['title']
-        for cartproduct in cartproducts
+    total = 0
+    cart_text = ''
+    inline_keyboard = [
+        [InlineKeyboardButton('Оплатить', callback_data='pay')],
+        [InlineKeyboardButton('В меню', callback_data='back_to_menu')],
     ]
+    for cartproduct in cartproducts:
+        product_id = cartproduct['attributes']['product']['data']['id']
+        product_attributes = cartproduct['attributes']['product']['data']['attributes']
+        product_title = product_attributes['title']
+        product_description = product_attributes['description']
+        product_price = product_attributes['price']
+        product_amount = cartproduct['attributes']['amount']
+        product_total = product_price * product_amount
+        total += product_total
+        cart_text += (
+            f'{product_title}\n'
+            f'{product_description}\n'
+            f'{product_price:.2f}rub per kg\n'
+            f'{product_amount}kg in cart for {product_total:.2f}rub\n\n'
+        )
+        inline_keyboard.append(
+            [InlineKeyboardButton(
+                f'Убрать {product_title}', callback_data=product_id,
+            )]
+        )
+    cart_text += f'Total: {total:.2f}rub'
     context.bot.send_message(
-        context.bot_data['user_id'],
-        '\n'.join(products)
+        telegram_id,
+        cart_text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard),
     )
+    return 'HANDLE_CART'
+
+
+def handle_cart(update: Update, context: CallbackContext) -> str:
+    if update.callback_query.data == 'back_to_menu':
+        get_menu(update, context)
+        return 'HANDLE_MENU'
+    else:
+        user_id = context.bot_data['telegram_id']
+        cart_filter = {'filters[tg_id][$eq]': user_id}
+        user_cart_id = requests.get(
+            os.path.join(STRAPI_API_URL, 'carts'),
+            params=cart_filter,
+        ).json()['data'][0]['id']
+        cartproduct_filter = {
+            'filters[cart][$eq]': user_cart_id,
+            'filters[product][$eq]': update.callback_query.data,
+        }
+        cartproduct_id = requests.get(
+            os.path.join(STRAPI_API_URL, 'product-in-carts'),
+            params=cartproduct_filter,
+        ).json()['data'][0]['id']
+        requests.delete(
+            os.path.join(
+                STRAPI_API_URL,
+                'product-in-carts',
+                str(cartproduct_id),
+            )
+        )
+        update.callback_query.delete_message()
+        show_cart(update, context)
+    return 'HANDLE_CART'
+
+
+def get_email(update: Update, context: CallbackContext) -> str:
+    user_filter = {'filters[cart][$eq]': context.bot_data['cart_id']}
+    user_id = requests.get(
+        os.path.join(STRAPI_API_URL, 'users'),
+        params=user_filter,
+    ).json()[0]['id']
+    payload = {'email': update.message.text}
+    update_response = requests.put(
+        os.path.join(STRAPI_API_URL, 'users', str(user_id)),
+        json=payload,
+    )
+    try:
+        update_response.raise_for_status()
+    except Exception:
+        update.message.reply_text('Введите валидный email')
+        return 'WAITING_EMAIL'
+    return 'START'
 
 
 def handle_users_reply(update: Update, context: CallbackContext) -> None:
@@ -231,6 +307,8 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
         'START': start,
         'HANDLE_MENU': get_description,
         'HANDLE_DESCRIPTION': add_to_cart,
+        'HANDLE_CART': handle_cart,
+        'WAITING_EMAIL': get_email,
     }
     state_handler = states_functions[user_state]
     try:
