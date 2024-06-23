@@ -2,12 +2,15 @@ import logging
 import os
 
 import redis
-import requests
-from io import BytesIO
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       KeyboardButton, ReplyKeyboardMarkup, Update)
 from telegram.ext import (Filters, Updater, CallbackQueryHandler,
                           CommandHandler, MessageHandler, CallbackContext)
+
+from strapi_requests import (add_product, create_cart, delete_cartproduct,
+                             download_picture, get_cart, get_cartproduct,
+                             get_product_with_picture, get_products,
+                             get_user, save_email)
 
 _database = None
 
@@ -37,17 +40,12 @@ def get_menu(update: Update, context: CallbackContext) -> str:
     Бот выдает все товары в виде инлайн кнопок.
     Оставляет пользователя в состоянии HANDLE_MENU.
     """
-    products = requests.get(
-        os.path.join(STRAPI_API_URL, 'products'),
-        headers=AUTH_HEADER,
-    )
-    products.raise_for_status()
-
+    products = get_products()
     keyboard = [
         [InlineKeyboardButton(
             product['attributes']['title'],
             callback_data=product['id'],
-        )] for product in products.json()['data']
+        )] for product in products['data']
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
@@ -79,22 +77,14 @@ def get_description(update: Update, context: CallbackContext) -> str:
     product_id = update.callback_query.data
     context.bot_data['product_id'] = product_id
 
-    payload = {'populate': 'picture'}
-    product = requests.get(
-        os.path.join(STRAPI_API_URL, 'products', product_id),
-        headers=AUTH_HEADER,
-        params=payload,
-    )
-    product.raise_for_status()
+    product = get_product_with_picture(product_id)
 
-    product_attributes = product.json()['data']['attributes']
+    product_attributes = product['data']['attributes']
     description = product_attributes['description']
     picture_attributes = product_attributes['picture']['data']['attributes']
-    picture_url = os.path.join(
-        STRAPI_API_URL[:-4],
-        picture_attributes['url'][1:],
-    )
-    dowloaded_picture = BytesIO(requests.get(picture_url).content)
+    picture_url = picture_attributes['url'][1:]
+
+    dowloaded_picture = download_picture(picture_url)
 
     update.callback_query.delete_message()
     context.bot.send_photo(
@@ -137,56 +127,27 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
         )
         return 'WAITING_EMAIL'
     else:
-        cart_filter = {
-            'filters[tg_id][$eq]': {context.bot_data['telegram_id']},
-        }
-        user_cart = requests.get(
-            os.path.join(STRAPI_API_URL, 'carts'),
-            headers=AUTH_HEADER,
-            params=cart_filter,
-        )
-        user_cart.raise_for_status()
+        telegram_id = context.bot_data['telegram_id']
+
+        user_cart = get_cart(telegram_id)
 
         if not user_cart:
-            cart_payload = {
-                'data': {'tg_id': {context.bot_data['telegram_id']}},
-            }
-            create_cart = requests.post(
-                os.path.join(STRAPI_API_URL, 'carts'),
-                headers=AUTH_HEADER,
-                json=cart_payload,
-            )
-            create_cart.raise_for_status()
+            create_cart(telegram_id)
+            user_cart = get_cart(telegram_id)
 
-        productcart_payload = {
-            'data': {
-                'cart': user_cart.json()['data'][0]['id'],
-                'product': context.bot_data['product_id'],
-                'amount': int(update.callback_query.data),
-            }
-        }
-        add_product = requests.post(
-            os.path.join(STRAPI_API_URL, 'product-in-carts'),
-            headers=AUTH_HEADER,
-            json=productcart_payload,
-        )
-        add_product.raise_for_status()
+        cart_id = user_cart['data'][0]['id']
+        product_id = context.bot_data['product_id']
+        amount = int(update.callback_query.data)
+        add_product(cart_id, product_id, amount)
     return "HANDLE_MENU"
 
 
 def show_cart(update: Update, context: CallbackContext) -> str:
     """Показать корзину."""
-    cart_filter = {
-        'filters[tg_id][$eq]': context.bot_data['telegram_id'],
-        'populate[cartproducts][populate]': 'product',
-    }
-    user_cart = requests.get(
-        os.path.join(STRAPI_API_URL, 'carts'),
-        params=cart_filter,
-    )
-    user_cart.raise_for_status()
+    telegram_id = context.bot_data['telegram_id']
+    user_cart = get_cart(telegram_id)
 
-    user_cart_data = user_cart.json()['data'][0]
+    user_cart_data = user_cart['data'][0]
     context.bot_data['cart_id'] = user_cart_data['id']
     cartproducts = user_cart_data['attributes']['cartproducts']['data']
     total = 0
@@ -236,36 +197,15 @@ def handle_cart(update: Update, context: CallbackContext) -> str:
         )
         return 'WAITING_EMAIL'
     else:
-        cart_filter = {'filters[tg_id][$eq]': context.bot_data['telegram_id']}
-        user_cart = requests.get(
-            os.path.join(STRAPI_API_URL, 'carts'),
-            headers=AUTH_HEADER,
-            params=cart_filter,
-        )
-        user_cart.raise_for_status()
+        telegram_id = context.bot_data['telegram_id']
+        user_cart = get_cart(telegram_id)
 
-        user_cart_id = user_cart.json()['data'][0]['id']
-        cartproduct_filter = {
-            'filters[cart][$eq]': user_cart_id,
-            'filters[product][$eq]': update.callback_query.data,
-        }
-        cartproduct = requests.get(
-            os.path.join(STRAPI_API_URL, 'product-in-carts'),
-            headers=AUTH_HEADER,
-            params=cartproduct_filter,
-        )
-        cartproduct.raise_for_status()
+        user_cart_id = user_cart['data'][0]['id']
+        product_id = update.callback_query.data
+        cartproduct = get_cartproduct(user_cart_id, product_id)
 
-        cartproduct_id = cartproduct.json()['data'][0]['id']
-        delete_product = requests.delete(
-            os.path.join(
-                STRAPI_API_URL,
-                'product-in-carts',
-                str(cartproduct_id),
-            ),
-            headers=AUTH_HEADER,
-        )
-        delete_product.raise_for_status()
+        cartproduct_id = cartproduct['data'][0]['id']
+        delete_cartproduct(cartproduct_id)
 
         update.callback_query.delete_message()
         show_cart(update, context)
@@ -274,23 +214,13 @@ def handle_cart(update: Update, context: CallbackContext) -> str:
 
 def get_email(update: Update, context: CallbackContext) -> str:
     """Записать email пользователя."""
-    user_filter = {'filters[cart][$eq]': context.bot_data['cart_id']}
-    user = requests.get(
-        os.path.join(STRAPI_API_URL, 'users'),
-        headers=AUTH_HEADER,
-        params=user_filter,
-    )
-    user.raise_for_status()
+    cart_id = context.bot_data['cart_id']
+    user = get_user(cart_id)
 
-    user_id = user.json()[0]['id']
-    payload = {'email': update.message.text}
-    update_response = requests.put(
-        os.path.join(STRAPI_API_URL, 'users', str(user_id)),
-        headers=AUTH_HEADER,
-        json=payload,
-    )
+    user_id = user[0]['id']
+    email = update.message.text
     try:
-        update_response.raise_for_status()
+        save_email(user_id, email)
     except Exception:
         update.message.reply_text('Введите валидный email')
         return 'WAITING_EMAIL'
