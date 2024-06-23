@@ -1,8 +1,3 @@
-"""
-Работает с этими модулями:
-python-telegram-bot==13.15
-redis==3.2.1
-"""
 import logging
 import os
 
