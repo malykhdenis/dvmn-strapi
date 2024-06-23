@@ -14,6 +14,8 @@ from strapi_requests import (add_product, create_cart, delete_cartproduct,
 
 _database = None
 
+WEIGHTS = [5, 10, 15]
+
 
 def start(update: Update, context: CallbackContext) -> str:
     """
@@ -92,7 +94,7 @@ def get_description(update: Update, context: CallbackContext) -> str:
                 [InlineKeyboardButton(
                     str(i),
                     callback_data=i,
-                ) for i in range(5, 16, 5)],
+                ) for i in WEIGHTS],
                 [InlineKeyboardButton(
                     'Моя корзина',
                     callback_data='show_cart',
