@@ -14,9 +14,6 @@ from strapi_requests import (add_product, create_cart, delete_cartproduct,
 
 _database = None
 
-STRAPI_API_URL = os.getenv('STRAPI_API_URL')
-AUTH_HEADER = {'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', }
-
 
 def start(update: Update, context: CallbackContext) -> str:
     """
