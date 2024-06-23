@@ -83,7 +83,6 @@ def get_description(update: Update, context: CallbackContext) -> str:
 
     dowloaded_picture = download_picture(picture_url)
 
-    update.callback_query.delete_message()
     context.bot.send_photo(
         update.callback_query.from_user.id,
         dowloaded_picture,
@@ -105,6 +104,7 @@ def get_description(update: Update, context: CallbackContext) -> str:
             ],
         )
     )
+    update.callback_query.delete_message()
 
     return 'HANDLE_DESCRIPTION'
 
