@@ -2,6 +2,7 @@ import logging
 import os
 
 import redis
+from dotenv import load_dotenv
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       KeyboardButton, ReplyKeyboardMarkup, Update)
 from telegram.ext import (Filters, Updater, CallbackQueryHandler,
@@ -15,6 +16,8 @@ from strapi_requests import (add_product, create_cart, delete_cartproduct,
 _database = None
 
 WEIGHTS = [5, 10, 15]
+
+load_dotenv()
 
 
 def start(update: Update, context: CallbackContext) -> str:
