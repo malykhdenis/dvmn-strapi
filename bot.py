@@ -209,8 +209,8 @@ def handle_cart(update: Update, context: CallbackContext) -> str:
         cartproduct_id = cartproduct['data'][0]['id']
         delete_cartproduct(cartproduct_id)
 
-        update.callback_query.delete_message()
         show_cart(update, context)
+        update.callback_query.delete_message()
     return 'HANDLE_CART'
 
 
