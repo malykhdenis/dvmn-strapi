@@ -17,8 +17,6 @@ _database = None
 
 WEIGHTS = [5, 10, 15]
 
-load_dotenv()
-
 
 def start(update: Update, context: CallbackContext) -> str:
     """
@@ -299,6 +297,7 @@ if __name__ == '__main__':
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO,
     )
+    load_dotenv()
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     updater = Updater(token)
     dispatcher = updater.dispatcher

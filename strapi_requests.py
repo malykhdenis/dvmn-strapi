@@ -2,9 +2,9 @@ from io import BytesIO
 import os
 
 import requests
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
 STRAPI_API_URL = os.getenv('STRAPI_API_URL')
 AUTH_HEADER = {'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', }
