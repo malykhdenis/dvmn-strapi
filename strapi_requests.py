@@ -4,14 +4,10 @@ import os
 import requests
 
 
-STRAPI_API_URL = os.getenv('STRAPI_API_URL')
-AUTH_HEADER = {'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', }
-
-
 def get_products():
     products = requests.get(
-        os.path.join(STRAPI_API_URL, 'products'),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'products'),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
     )
     products.raise_for_status()
     return products.json()
@@ -20,8 +16,8 @@ def get_products():
 def get_product_with_picture(product_id):
     payload = {'populate': 'picture'}
     product = requests.get(
-        os.path.join(STRAPI_API_URL, 'products', product_id),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'products', product_id),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         params=payload,
     )
     product.raise_for_status()
@@ -29,7 +25,7 @@ def get_product_with_picture(product_id):
 
 
 def download_picture(picture_url):
-    picture_url = os.path.join(STRAPI_API_URL[:-4], picture_url,)
+    picture_url = os.path.join(os.getenv('STRAPI_API_URL')[:-4], picture_url,)
     picture_response = requests.get(picture_url)
     picture_response.raise_for_status()
     return BytesIO(picture_response.content)
@@ -41,8 +37,8 @@ def get_cart(telegram_id):
             'populate[cartproducts][populate]': 'product',
         }
     user_cart = requests.get(
-        os.path.join(STRAPI_API_URL, 'carts'),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'carts'),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         params=cart_filter,
     )
     user_cart.raise_for_status()
@@ -54,8 +50,8 @@ def create_cart(telegram_id):
         'data': {'tg_id': telegram_id},
     }
     create_cart = requests.post(
-        os.path.join(STRAPI_API_URL, 'carts'),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'carts'),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         json=cart_payload,
     )
     create_cart.raise_for_status()
@@ -70,8 +66,8 @@ def add_product(cart_id, product_id, amount):
         }
     }
     add_product = requests.post(
-        os.path.join(STRAPI_API_URL, 'product-in-carts'),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'product-in-carts'),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         json=productcart_payload,
     )
     add_product.raise_for_status()
@@ -83,8 +79,8 @@ def get_cartproduct(cart_id, product_id):
         'filters[product][$eq]': product_id,
     }
     cartproduct = requests.get(
-        os.path.join(STRAPI_API_URL, 'product-in-carts'),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'product-in-carts'),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         params=cartproduct_filter,
     )
     cartproduct.raise_for_status()
@@ -94,11 +90,11 @@ def get_cartproduct(cart_id, product_id):
 def delete_cartproduct(cartproduct_id):
     delete_product = requests.delete(
         os.path.join(
-            STRAPI_API_URL,
+            os.getenv('STRAPI_API_URL'),
             'product-in-carts',
             str(cartproduct_id),
         ),
-        headers=AUTH_HEADER,
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
     )
     delete_product.raise_for_status()
 
@@ -106,8 +102,8 @@ def delete_cartproduct(cartproduct_id):
 def get_user(cart_id):
     user_filter = {'filters[cart][$eq]': cart_id}
     user = requests.get(
-        os.path.join(STRAPI_API_URL, 'users'),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'users'),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         params=user_filter,
     )
     user.raise_for_status()
@@ -117,8 +113,8 @@ def get_user(cart_id):
 def save_email(user_id, email):
     payload = {'email': email}
     update_response = requests.put(
-        os.path.join(STRAPI_API_URL, 'users', str(user_id)),
-        headers=AUTH_HEADER,
+        os.path.join(os.getenv('STRAPI_API_URL'), 'users', str(user_id)),
+        headers={'Authorization': f'bearer {os.getenv("STRAPI_TOKEN")}', },
         json=payload,
     )
     update_response.raise_for_status()
