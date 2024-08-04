@@ -40,7 +40,7 @@ def get_menu(update: Update, context: CallbackContext) -> str:
     Бот выдает все товары в виде инлайн кнопок.
     Оставляет пользователя в состоянии HANDLE_MENU.
     """
-    products = get_products()
+    products = get_products(strapi_token, strapi_api_url)
     keyboard = [
         [InlineKeyboardButton(
             product['attributes']['title'],
@@ -77,14 +77,18 @@ def get_description(update: Update, context: CallbackContext) -> str:
     product_id = update.callback_query.data
     context.bot_data['product_id'] = product_id
 
-    product = get_product_with_picture(product_id)
+    product = get_product_with_picture(
+        product_id,
+        strapi_token,
+        strapi_api_url,
+    )
 
     product_attributes = product['data']['attributes']
     description = product_attributes['description']
     picture_attributes = product_attributes['picture']['data']['attributes']
     picture_url = picture_attributes['url'][1:]
 
-    dowloaded_picture = download_picture(picture_url)
+    dowloaded_picture = download_picture(picture_url, strapi_api_url)
 
     context.bot.send_photo(
         update.callback_query.from_user.id,
@@ -129,23 +133,23 @@ def add_to_cart(update: Update, context: CallbackContext) -> str:
     else:
         telegram_id = context.bot_data['telegram_id']
 
-        user_cart = get_cart(telegram_id)
+        user_cart = get_cart(telegram_id, strapi_token, strapi_api_url)
 
         if not user_cart:
-            create_cart(telegram_id)
-            user_cart = get_cart(telegram_id)
+            create_cart(telegram_id, strapi_token, strapi_api_url)
+            user_cart = get_cart(telegram_id, strapi_token, strapi_api_url)
 
         cart_id = user_cart['data'][0]['id']
         product_id = context.bot_data['product_id']
         amount = int(update.callback_query.data)
-        add_product(cart_id, product_id, amount)
+        add_product(cart_id, product_id, amount, strapi_token, strapi_api_url)
     return "HANDLE_MENU"
 
 
 def show_cart(update: Update, context: CallbackContext) -> str:
     """Показать корзину."""
     telegram_id = context.bot_data['telegram_id']
-    user_cart = get_cart(telegram_id)
+    user_cart = get_cart(telegram_id, strapi_token, strapi_api_url)
 
     user_cart_data = user_cart['data'][0]
     context.bot_data['cart_id'] = user_cart_data['id']
@@ -198,14 +202,19 @@ def handle_cart(update: Update, context: CallbackContext) -> str:
         return 'WAITING_EMAIL'
     else:
         telegram_id = context.bot_data['telegram_id']
-        user_cart = get_cart(telegram_id)
+        user_cart = get_cart(telegram_id, strapi_token, strapi_api_url)
 
         user_cart_id = user_cart['data'][0]['id']
         product_id = update.callback_query.data
-        cartproduct = get_cartproduct(user_cart_id, product_id)
+        cartproduct = get_cartproduct(
+            user_cart_id,
+            product_id,
+            strapi_token,
+            strapi_api_url,
+        )
 
         cartproduct_id = cartproduct['data'][0]['id']
-        delete_cartproduct(cartproduct_id)
+        delete_cartproduct(cartproduct_id, strapi_token, strapi_api_url)
 
         show_cart(update, context)
         update.callback_query.delete_message()
@@ -215,12 +224,12 @@ def handle_cart(update: Update, context: CallbackContext) -> str:
 def get_email(update: Update, context: CallbackContext) -> str:
     """Записать email пользователя."""
     cart_id = context.bot_data['cart_id']
-    user = get_user(cart_id)
+    user = get_user(cart_id, strapi_token, strapi_api_url)
 
     user_id = user[0]['id']
     email = update.message.text
     try:
-        save_email(user_id, email)
+        save_email(user_id, email, strapi_token, strapi_api_url)
     except Exception:
         update.message.reply_text('Введите валидный email')
         return 'WAITING_EMAIL'
@@ -298,8 +307,10 @@ if __name__ == '__main__':
         level=logging.INFO,
     )
     load_dotenv()
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    updater = Updater(token)
+    telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    strapi_token = os.getenv("STRAPI_TOKEN")
+    strapi_api_url = os.getenv('STRAPI_API_URL')
+    updater = Updater(telegram_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(
         MessageHandler(Filters.regex(r'Моя корзина'), show_cart),
