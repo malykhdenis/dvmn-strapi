@@ -18,7 +18,11 @@ _database = None
 WEIGHTS = [5, 10, 15]
 
 
-def start(update: Update, context: CallbackContext) -> str:
+def start(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """
     Хэндлер для состояния START.
     Бот отвечает пользователю фразой "Привет!" и переводит его в состояние
@@ -31,10 +35,14 @@ def start(update: Update, context: CallbackContext) -> str:
         text='Привет!',
         reply_markup=ReplyKeyboardMarkup([[KeyboardButton('Моя корзина')]]),
     )
-    return get_menu(update, context)
+    return get_menu(update, context, strapi_token, strapi_api_url)
 
 
-def get_menu(update: Update, context: CallbackContext) -> str:
+def get_menu(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """
     Хэндлер для состояния HANDLE_DESCRIPTION.
     Бот выдает все товары в виде инлайн кнопок.
@@ -55,14 +63,18 @@ def get_menu(update: Update, context: CallbackContext) -> str:
     return 'HANDLE_MENU'
 
 
-def get_description(update: Update, context: CallbackContext) -> str:
+def get_description(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """
     Хэндлер для состояния HANDLE_MENU.
     Бот присылает пользователю описание выбранного товара.
     Оставляет пользователя в состоянии HANDLE_DESCRIPTION.
     """
     if update.callback_query.data == 'back_to_menu':
-        get_menu(update, context)
+        get_menu(update, context, strapi_token, strapi_api_url)
         return 'HANDLE_MENU'
     elif update.callback_query.data == 'show_cart':
         show_cart(update, context)
@@ -116,10 +128,14 @@ def get_description(update: Update, context: CallbackContext) -> str:
     return 'HANDLE_DESCRIPTION'
 
 
-def add_to_cart(update: Update, context: CallbackContext) -> str:
+def add_to_cart(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """Добавить товар в корзину."""
     if update.callback_query.data == 'back_to_menu':
-        get_menu(update, context)
+        get_menu(update, context, strapi_token, strapi_api_url)
         return 'HANDLE_MENU'
     elif update.callback_query.data == 'show_cart':
         show_cart(update, context)
@@ -189,10 +205,14 @@ def show_cart(update: Update, context: CallbackContext) -> str:
     return 'HANDLE_CART'
 
 
-def handle_cart(update: Update, context: CallbackContext) -> str:
+def handle_cart(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """Удалить товар из корзины, либо вернуться к списку товаров."""
     if update.callback_query.data == 'back_to_menu':
-        get_menu(update, context)
+        get_menu(update, context, strapi_token, strapi_api_url)
         return 'HANDLE_MENU'
     elif update.callback_query.data == 'pay':
         context.bot.send_message(
@@ -221,7 +241,11 @@ def handle_cart(update: Update, context: CallbackContext) -> str:
     return 'HANDLE_CART'
 
 
-def get_email(update: Update, context: CallbackContext) -> str:
+def get_email(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """Записать email пользователя."""
     cart_id = context.bot_data['cart_id']
     user = get_user(cart_id, strapi_token, strapi_api_url)
@@ -277,7 +301,12 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
     }
     state_handler = states_functions[user_state]
     try:
-        next_state = state_handler(update, context)
+        next_state = state_handler(
+            update,
+            context,
+            strapi_token,
+            strapi_api_url,
+        )
         db.set(chat_id, next_state)
     except Exception as err:
         print(err)
