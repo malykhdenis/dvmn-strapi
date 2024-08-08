@@ -165,7 +165,11 @@ def add_to_cart(
 def show_cart(update: Update, context: CallbackContext) -> str:
     """Показать корзину."""
     telegram_id = context.bot_data['telegram_id']
-    user_cart = get_cart(telegram_id, strapi_token, strapi_api_url)
+    user_cart = get_cart(
+        telegram_id,
+        strapi_token=os.getenv("STRAPI_TOKEN"),
+        strapi_api_url=os.getenv('STRAPI_API_URL'),
+    )
 
     user_cart_data = user_cart['data'][0]
     context.bot_data['cart_id'] = user_cart_data['id']
@@ -304,8 +308,8 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
         next_state = state_handler(
             update,
             context,
-            strapi_token,
-            strapi_api_url,
+            strapi_token=os.getenv("STRAPI_TOKEN"),
+            strapi_api_url=os.getenv('STRAPI_API_URL'),
         )
         db.set(chat_id, next_state)
     except Exception as err:
@@ -330,15 +334,13 @@ def get_database_connection():
     return _database
 
 
-if __name__ == '__main__':
+def main():
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO,
     )
     load_dotenv()
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
-    strapi_token = os.getenv("STRAPI_TOKEN")
-    strapi_api_url = os.getenv('STRAPI_API_URL')
     updater = Updater(telegram_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(
@@ -349,3 +351,7 @@ if __name__ == '__main__':
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))
     updater.start_polling()
     updater.idle()
+
+
+if __name__ == '__main__':
+    main()
