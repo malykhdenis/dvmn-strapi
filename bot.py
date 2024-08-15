@@ -1,5 +1,6 @@
 import logging
 import os
+from functools import partial
 
 import redis
 from dotenv import load_dotenv
@@ -162,13 +163,17 @@ def add_to_cart(
     return "HANDLE_MENU"
 
 
-def show_cart(update: Update, context: CallbackContext) -> str:
+def show_cart(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> str:
     """Показать корзину."""
     telegram_id = context.bot_data['telegram_id']
     user_cart = get_cart(
         telegram_id,
-        strapi_token=os.getenv("STRAPI_TOKEN"),
-        strapi_api_url=os.getenv('STRAPI_API_URL'),
+        strapi_token,
+        strapi_api_url,
     )
 
     user_cart_data = user_cart['data'][0]
@@ -264,7 +269,11 @@ def get_email(
     return 'START'
 
 
-def handle_users_reply(update: Update, context: CallbackContext) -> None:
+def handle_users_reply(
+        update: Update,
+        context: CallbackContext,
+        strapi_token: str,
+        strapi_api_url: str) -> None:
     """
     Функция, которая запускается при любом сообщении от пользователя и решает
     как его обработать.
@@ -308,8 +317,8 @@ def handle_users_reply(update: Update, context: CallbackContext) -> None:
         next_state = state_handler(
             update,
             context,
-            strapi_token=os.getenv("STRAPI_TOKEN"),
-            strapi_api_url=os.getenv('STRAPI_API_URL'),
+            strapi_token,
+            strapi_api_url,
         )
         db.set(chat_id, next_state)
     except Exception as err:
@@ -341,14 +350,30 @@ def main():
     )
     load_dotenv()
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    strapi_token = os.getenv("STRAPI_TOKEN")
+    strapi_api_url = os.getenv('STRAPI_API_URL')
     updater = Updater(telegram_token)
     dispatcher = updater.dispatcher
     dispatcher.add_handler(
-        MessageHandler(Filters.regex(r'Моя корзина'), show_cart),
+        MessageHandler(
+            Filters.regex(r'Моя корзина'),
+            partial(
+                show_cart,
+                strapi_token=strapi_token,
+                strapi_api_url=strapi_api_url,
+            ),
+        ),
     )
-    dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
-    dispatcher.add_handler(MessageHandler(Filters.text, handle_users_reply))
-    dispatcher.add_handler(CommandHandler('start', handle_users_reply))
+    handle_users_reply_partial = partial(
+        handle_users_reply,
+        strapi_token=strapi_token,
+        strapi_api_url=strapi_api_url,
+    )
+    dispatcher.add_handler(CallbackQueryHandler(handle_users_reply_partial))
+    dispatcher.add_handler(
+        MessageHandler(Filters.text, handle_users_reply_partial)
+    )
+    dispatcher.add_handler(CommandHandler('start', handle_users_reply_partial))
     updater.start_polling()
     updater.idle()
 
